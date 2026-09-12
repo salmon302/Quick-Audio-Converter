@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+
+    <!-- AOT: produce a standalone, dependency-free executable -->
+    <PublishAot>true</PublishAot>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- Opt-in to WinForms Native AOT (trimming is unsupported by default; .NET 9 supports it with caveats) -->
+    <_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError>
+
+    <!-- Project metadata -->
+    <AssemblyName>QuickAudioConverter</AssemblyName>
+    <RootNamespace>QuickAudioConverter</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <Product>Quick Audio Converter</Product>
+    <Copyright>Copyright (c) 2026</Copyright>
+  </PropertyGroup>
+
+  <!-- Third-party native MP3 encoder (libmp3lame, LGPL). Staged by SNDEV/scripts/fetch-lame.ps1
+       into native\libmp3lame.dll; copied next to the EXE so the P/Invoke resolves at runtime.
+       The binary is intentionally git-ignored (not committed). -->
+  <ItemGroup>
+    <None Include="native\libmp3lame.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('native\libmp3lame.dll')" />
+    <!-- LGPL attribution (THIRD_PARTY.md + LGPL-2.1.txt) shipped side-by-side with the EXE. -->
+    <None Include="licenses\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Static M4A decode fixture for the offline self-test (no network/encoder dependency). -->
+    <None Include="fixtures\*.m4a" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Copy next to the EXE for both a plain Build and a Native AOT Publish (AOT publish does not
+       propagate the None items, so we copy explicitly into $(PublishDir) when it is defined). -->
+  <Target Name="CopyLameDll" AfterTargets="Build;Publish" Condition="Exists('native\libmp3lame.dll')">
+    <Copy SourceFiles="native\libmp3lame.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="native\libmp3lame.dll" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+    <ItemGroup>
+      <_LicenseFiles Include="licenses\**" />
+      <_FixtureFiles Include="fixtures\*.m4a" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_LicenseFiles)" DestinationFolder="$(OutDir)\licenses" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_LicenseFiles)" DestinationFolder="$(PublishDir)\licenses" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+    <Copy SourceFiles="@(_FixtureFiles)" DestinationFolder="$(OutDir)\fixtures" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_FixtureFiles)" DestinationFolder="$(PublishDir)\fixtures" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+  </Target>
+
+</Project>

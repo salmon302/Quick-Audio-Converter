@@ -1,0 +1,11 @@
+# Build output
+bin/
+obj/
+*.user
+.vs/
+
+# Agent-internal working logs (not part of the shipped product)
+SNDEV/
+
+# Third-party native encoder binary (LGPL libmp3lame) — staged locally, not committed.
+src/QuickAudioConverter/native/libmp3lame.dll
