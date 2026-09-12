@@ -32,18 +32,18 @@
     <None Include="native\libmp3lame.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('native\libmp3lame.dll')" />
     <!-- LGPL attribution (THIRD_PARTY.md + LGPL-2.1.txt) shipped side-by-side with the EXE. -->
     <None Include="licenses\**" CopyToOutputDirectory="PreserveNewest" />
-    <!-- Static M4A decode fixture for the offline self-test (no network/encoder dependency). -->
-    <None Include="fixtures\*.m4a" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Copy next to the EXE for both a plain Build and a Native AOT Publish (AOT publish does not
-       propagate the None items, so we copy explicitly into $(PublishDir) when it is defined). -->
+       propagate the None items, so we copy explicitly into $(PublishDir) when it is defined).
+       The M4A fixture lives at the repo-root tests/fixtures/ (outside the project), so it is
+       copied by this target rather than a None item. -->
   <Target Name="CopyLameDll" AfterTargets="Build;Publish" Condition="Exists('native\libmp3lame.dll')">
     <Copy SourceFiles="native\libmp3lame.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="native\libmp3lame.dll" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
     <ItemGroup>
       <_LicenseFiles Include="licenses\**" />
-      <_FixtureFiles Include="fixtures\*.m4a" />
+      <_FixtureFiles Include="$(MSBuildThisFileDirectory)..\..\tests\fixtures\*.m4a" />
     </ItemGroup>
     <Copy SourceFiles="@(_LicenseFiles)" DestinationFolder="$(OutDir)\licenses" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_LicenseFiles)" DestinationFolder="$(PublishDir)\licenses" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
