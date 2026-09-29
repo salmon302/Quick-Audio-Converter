@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sparse package for Quick Audio Converter.
+  A sparse package is an MSIX with (almost) no payload: it grants the desktop EXE a *package
+  identity*. Windows 11 File Explorer promotes an IExplorerCommand declared by a packaged app to
+  the TOP-LEVEL context menu (i.e. it no longer sits behind "Show more options").
+
+  Notes:
+  - Executable is relative; the installer passes -ExternalLocation <install dir> to Add-AppxPackage,
+    so the real EXE path is resolved at install time (no absolute paths baked in).
+  - The comServer OutOfProcessServer Class Id MUST equal ExplorerCommandGuids.ExplorerCommandClsid
+    in src/QuickAudioConverter/Shell/ExplorerCommandGuids.cs.
+  - The uap3 AppExtension (com.microsoft.windows.fileexplorercontextmenu) registers this package as a
+    File Explorer context-menu provider. The actual per-extension command registration is written by
+    the app under package identity (see the register-modern-packaged verb / Invoke-CommandInDesktopPackage).
+  - runFullTrust capability is required for the FullTrust desktop EXE.
+
+  Build & sign with packaging/sparse/build-sparse.ps1, install with SNDEV/scripts/deploy.ps1.
+-->
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+         xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+         IgnorableNamespaces="uap uap3 com rescap">
+
+  <Identity Name="QuickAudioConverter.Sparse"
+            Publisher="CN=QuickAudioConverter"
+            Version="0.1.0.0"
+            ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Quick Audio Converter (shell integration)</DisplayName>
+    <PublisherDisplayName>Quick Audio Converter</PublisherDisplayName>
+    <Description>Windows 11 top-level context-menu integration for Quick Audio Converter.</Description>
+    <!-- Sparse packages ship no visual assets; the Logo files are 1x1 placeholders created by build-sparse.ps1. -->
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+
+  <Applications>
+    <Application Id="QAC"
+                 Executable="QuickAudioConverter.exe"
+                 EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="Quick Audio Converter"
+                          Description="Audio conversion"
+                          BackgroundColor="transparent"
+                          Square150x150Logo="Assets\Logo.png"
+                          Square44x44Logo="Assets\Logo.png" />
+    </Application>
+  </Applications>
+
+  <Extensions>
+    <!-- COM server hosting the IExplorerCommand implementation (out-of-process local server). -->
+    <com:Extension Category="windows.comServer">
+      <com:ComServer>
+        <com:OutOfProcessServer Name="QacExplorerCommand" Path="QuickAudioConverter.exe" Arguments="--comserver">
+          <com:Class Id="B7E2C1A0-5F3E-4C8A-9B1D-2C4F6E8A0D11"
+                     DisplayName="Quick Audio Converter Explorer Command"
+                     ThreadingModel="Both" />
+        </com:OutOfProcessServer>
+      </com:ComServer>
+    </com:Extension>
+
+    <!-- Declares this package as a File Explorer context-menu provider (Windows 11 top-level). -->
+    <uap3:Extension Category="windows.appExtension">
+      <uap3:AppExtension Name="com.microsoft.windows.fileexplorercontextmenu"
+                         Id="QacContextMenu"
+                         PublicFolder="Public"
+                         DisplayName="Quick Audio Converter">
+        <uap3:Properties />
+      </uap3:AppExtension>
+    </uap3:Extension>
+  </Extensions>
+</Package>

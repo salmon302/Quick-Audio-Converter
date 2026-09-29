@@ -32,6 +32,14 @@
     <None Include="native\libmp3lame.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('native\libmp3lame.dll')" />
     <!-- LGPL attribution (THIRD_PARTY.md + LGPL-2.1.txt) shipped side-by-side with the EXE. -->
     <None Include="licenses\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Sparse-package manifest (and any prebuilt .msix) ship next to the EXE so the install verb
+         can call Add-AppxPackage with -ExternalLocation pointing at this directory. -->
+    <None Include="..\..\packaging\sparse\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Allow the verification test project to exercise internal engine types. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="QuickAudioConverter.Tests" />
   </ItemGroup>
 
   <!-- Copy next to the EXE for both a plain Build and a Native AOT Publish (AOT publish does not

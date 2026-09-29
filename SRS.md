@@ -18,7 +18,7 @@ The primary GUI features a ribbon-style navigation paradigm with distinct tabs (
 *   A dynamic status bar displaying the active encoding parameters (e.g., `Convert to .mp3 | CBR(224kbps)|High Quality|Mode(Mono)`).
 
 **2.2 Operating Environment**
-The software is designed for Microsoft Windows desktop environments. It requires administrative privileges during installation to modify the system registry for shell extension integration.
+The software is designed for Microsoft Windows desktop environments. It requires administrative privileges during installation to modify the system registry for shell extension integration. The admin ("all users") installer path writes machine-wide `HKLM` COM/context-menu registration and installs the sparse package (see REQ-SHELL-01) that grants the Windows 11 top-level menu; it self-elevates via UAC (`runas`) when launched without administrator rights.
 
 ### 3. Functional Requirements
 
@@ -36,6 +36,7 @@ The software is designed for Microsoft Windows desktop environments. It requires
     *   The conversion engine initiates as a headless background process.
     *   The engine retrieves the last-used encoding parameters from the application's persistent configuration state.
     *   Output path resolution evaluates the saved global application settings to determine if files should write to a static target directory or the original source directory.
+*   **Implementation note (Windows 11 top-level menu):** In addition to the legacy per-user static verb, the application implements the native **`IExplorerCommand`** COM interface (C#, hosted out-of-process as a COM local server — `QuickAudioConverter.exe --comserver`). To surface the command in the **first-class Windows 11 top-level** context menu (rather than behind "Show more options"), the EXE is granted **package identity** via a **sparse package** (an MSIX with no payload referencing the installed desktop EXE). The sparse package declares `windows.comServer` (the CLSID) and the `windows.fileExplorerContextMenu` app-extension. All-users installation (per §2.2) writes the `HKLM` `CLSID` + per-extension `ExplorerCommandHandler` shell keys and calls `Add-AppxPackage` on the sparse `.msix`; the per-extension registration is then performed under package identity so File Explorer promotes the entry to the top-level menu.
 
 ### 4. Non-Functional Requirements
 
@@ -55,13 +56,15 @@ Recommended Architecture (adopted). Decode/demux is always performed by the **Wi
 
 - **WAV (PCM passthrough):** a 44-byte RIFF/WAVE header is written directly in C# (`BinaryWriter`/`FileStream`). This eliminates all Sink Writer / COM / MFT overhead for the PCM path — the file is just a header followed by the raw PCM buffer.
 - **MP3:** the raw 16-bit PCM buffer from the Source Reader is encoded by **libmp3lame (LAME)** via P/Invoke (`lame_init`, `lame_set_in_samplerate`, `lame_set_num_channels`, `lame_set_brate`, `lame_set_mode`, `lame_set_quality`, `lame_init_params`, `lame_encode_buffer_interleaved`, `lame_encode_flush`, `lame_close`). This deliberately bypasses the Media Foundation MP3 encoder MFT, which is **absent on Windows N / un-provisioned installs**, and ships a single ~360 KB LGPL native DLL (`libmp3lame.dll`) next to the executable.
-- **Other compressed formats (AAC / M4A / FLAC):** legacy Sink Writer path is retained, but it requires an encoder MFT that is likewise absent on this OS build; these formats are therefore not guaranteed to encode until an encoder is provisioned.
+- **M4A / AAC / FLAC:** encoded by a bundled or system **FFmpeg** invoked headlessly (`-c:a aac` for M4A/AAC, `-c:a flac` for FLAC). This bypasses the Media Foundation AAC/FLAC encoder MFTs, which are likewise absent on Windows N / un-provisioned installs. FFmpeg is used *only* for these container formats; decoding and WAV/MP3 writing remain native (WMF + LAME). See the NFR §4.1 exception note below.
 
 Custom-Trimmed FFmpeg Static Binary: ~15–25 MB. Optional alternative if broader container/codec coverage is required; compile a bespoke minimal FFmpeg executable with all demuxers/decoders/encoders disabled except aac, m4a, and libmp3lame and execute it headlessly.
 
-> **NFR §4.1 exception.** §4.1 ("prioritize native operating system APIs over third-party dependencies") is intentionally relaxed *only* for the MP3 encoder, because Windows does not ship a usable MP3 encoder MFT on N / un-provisioned editions. libmp3lame is the minimal, well-established exception (LGPL v2.1+; provenance staged via `SNDEV/scripts/fetch-lame.ps1`). All decoding and WAV writing remain 100% native OS APIs.
+> **NFR §4.1 exception.** §4.1 ("prioritize native operating system APIs over third-party dependencies") is intentionally relaxed for (a) the MP3 encoder via **libmp3lame** (LAME), because Windows does not ship a usable MP3 encoder MFT on N / un-provisioned editions, and (b) the M4A / AAC / FLAC encoders via **FFmpeg**, because Windows likewise ships no AAC/FLAC encoder MFT on those builds. FFmpeg is resolved from a side-by-side `ffmpeg.exe` next to the app (or system PATH) and invoked headlessly; it is staged automatically by `SNDEV/scripts/deploy.ps1` when present. All *decoding* and *WAV/MP3 writing* remain 100% native OS APIs (Media Foundation + LAME). libmp3lame provenance is staged via `SNDEV/scripts/fetch-lame.ps1`; ffmpeg is git-ignored and not redistributed in the source repository.
 >
 > **LGPL compliance (libmp3lame).** The application links `libmp3lame.dll` *dynamically* via P/Invoke, so the Native AOT executable is a separate work that merely uses the library. The DLL is shipped side-by-side with the EXE and is user-replaceable. Attribution is provided in the published `licenses/` directory (`THIRD_PARTY.md` + `LGPL-2.1.txt`), and LAME source is referenced at <https://sourceforge.net/projects/lame/>. The binary itself is git-ignored and not redistributed in the source repository.
+
+> **FFmpeg usage (M4A/AAC/FLAC).** `ffmpeg.exe` is invoked as a *separate process* (not linked), so the Native AOT executable is a separate work; the binary is shipped side-by-side, is user-replaceable, and is git-ignored. When bundling, select an FFmpeg build whose license terms (GPL/LGPL depending on configuration) are acceptable for your distribution.
 
 Application Framework & GUI
 

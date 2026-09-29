@@ -30,6 +30,16 @@ internal sealed class WmfAudioEngine : IAudioEngine
     {
         string fmt = s.OutputFormat.ToLowerInvariant();
         MediaFoundation.Log("start fmt=" + fmt);
+
+        // Compressed container formats with no reliable OS encoder MFT on this build are produced
+        // via FFmpeg (see FfmpegEncoder). This path never touches Media Foundation.
+        if (fmt == "m4a" || fmt == "aac" || fmt == "flac")
+        {
+            FfmpegEncoder.Encode(input, output, s);
+            MediaFoundation.Log("ffmpeg-done " + fmt);
+            return;
+        }
+
         HResult.ThrowIfFailed(MediaFoundation.MFStartup(MediaFoundation.MF_VERSION, 0), "MFStartup");
         try
         {

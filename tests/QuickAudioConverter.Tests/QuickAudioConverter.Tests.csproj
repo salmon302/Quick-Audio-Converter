@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <OutputType>Library</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>QuickAudioConverter.Tests</AssemblyName>
+    <RootNamespace>QuickAudioConverter.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\QuickAudioConverter\QuickAudioConverter.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Stage the LGPL MP3 encoder + M4A fixtures so the integration legs can run when provisioned. -->
+    <None Include="..\..\src\QuickAudioConverter\native\libmp3lame.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\src\QuickAudioConverter\native\libmp3lame.dll')" />
+    <None Include="..\..\tests\fixtures\*.m4a" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Sparse-package manifest, validated by ExplorerCommandTests. -->
+    <None Include="..\..\packaging\sparse\AppxManifest.xml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -8,11 +8,13 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using QuickAudioConverter.Engine;
 using QuickAudioConverter.Ui;
+using QuickAudioConverter.Shell;
 
 /// <summary>
 /// Primary application window. Hosts the ribbon-style navigation (Home / Convert / Effects /
 /// Options), the action toolbar, the drag-and-drop ingestion zone, the output routing panel,
 /// and the dynamic status bar. Conversion is performed by the WMF engine via AudioConversionService.
+/// Last-used settings are persisted (AppSettings) so the Explorer context-menu path can reuse them.
 /// </summary>
 public sealed class MainForm : Form
 {
@@ -21,6 +23,8 @@ public sealed class MainForm : Form
     private readonly ToolStripStatusLabel _statusLabel = new();
     private readonly DropZone _dropZone = new();
     private readonly OutputPanel _outputPanel = new();
+    private readonly OptionsPanel _optionsPanel;
+    private readonly AppSettings _settings = AppSettings.Load();
     private readonly List<string> _queue = new();
 
     public MainForm()
@@ -38,10 +42,12 @@ public sealed class MainForm : Form
         convertTab.Controls.Add(_outputPanel);
         convertTab.Controls.Add(_dropZone);
 
+        _optionsPanel = new OptionsPanel(_settings);
+
         _ribbon.AddTab("Home", Placeholder("Home - dashboard (coming soon)"));
         _ribbon.AddTab("Convert", convertTab);
         _ribbon.AddTab("Effects", Placeholder("Effects - normalize, trim, fade (coming soon)"));
-        _ribbon.AddTab("Options", Placeholder("Options - encoding profiles & shell integration (coming soon)"));
+        _ribbon.AddTab("Options", _optionsPanel);
 
         _ribbon.AddToolbarButton("Add File(s)", (s, e) => AddFiles());
         _ribbon.AddToolbarButton("Remove", (s, e) => ClearQueue());
@@ -54,6 +60,9 @@ public sealed class MainForm : Form
         _dropZone.FilesDropped += (s, paths) => Enqueue(paths);
         _outputPanel.BrowseClicked += (s, e) => BrowseFolder();
         _outputPanel.OpenFolderClicked += (s, e) => OpenFolder();
+        _optionsPanel.ShellIntegrationToggled += OnShellToggle;
+        _optionsPanel.InstallAllUsersClicked += (s, e) => InstallShellAllUsers();
+        _optionsPanel.UninstallAllUsersClicked += (s, e) => UninstallShellAllUsers();
 
         _statusStrip.Dock = DockStyle.Bottom;
         _statusLabel.Text = "Ready";
@@ -63,6 +72,9 @@ public sealed class MainForm : Form
         Controls.Add(_statusStrip);
 
         _ribbon.SelectTab("Convert");
+        _optionsPanel.SetStatus(ShellIntegration.IsRegistered(_settings)
+            ? "Context-menu integration is enabled."
+            : "Context-menu integration is disabled.");
         UpdateStatus();
     }
 
@@ -135,7 +147,7 @@ public sealed class MainForm : Form
         var settings = new ConversionSettings
         {
             OutputFormat = _outputPanel.OutputFormat,
-            BitrateKbps = 224,
+            BitrateKbps = _outputPanel.BitrateKbps,
             Channels = _outputPanel.Channels,
             SampleRate = 44100
         };
@@ -145,6 +157,16 @@ public sealed class MainForm : Form
             SaveToFolder = _outputPanel.SaveToFolder,
             CopySourceStructure = _outputPanel.CopySourceStructure
         };
+
+        // Persist the just-used profile as the "last-used" settings for the context-menu path.
+        _settings.OutputFormat = settings.OutputFormat;
+        _settings.BitrateKbps = settings.BitrateKbps;
+        _settings.Channels = settings.Channels;
+        _settings.Quality = _outputPanel.Quality;
+        _settings.SaveToSource = routing.SaveToSource;
+        _settings.DefaultSaveFolder = routing.SaveToFolder;
+        _settings.CopySourceStructure = routing.CopySourceStructure;
+        _settings.Save();
 
         _statusLabel.Text = "Converting...";
         var service = new AudioConversionService(new WmfAudioEngine());
@@ -199,14 +221,62 @@ public sealed class MainForm : Form
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", path) { UseShellExecute = true });
     }
 
+    private void OnShellToggle(object? sender, bool enable)
+    {
+        try
+        {
+            _optionsPanel.Persist();
+            if (enable) ShellIntegration.Register(_settings);
+            else ShellIntegration.Unregister(_settings);
+            _optionsPanel.SetStatus(enable
+                ? "Context-menu integration enabled. Right-click a supported audio file in Explorer."
+                : "Context-menu integration disabled.");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Shell integration failed: {ex.Message}", "Quick Audio Converter");
+            _optionsPanel.RefreshFromSettings();
+        }
+    }
+
+    private void InstallShellAllUsers()
+    {
+        bool ok = Uac.RelaunchElevated("--install --all-users");
+        RefreshShellState();
+        _optionsPanel.SetStatus(ok
+            ? "Windows 11 top-level menu installed for all users."
+            : "Admin install cancelled or failed.");
+    }
+
+    private void UninstallShellAllUsers()
+    {
+        bool ok = Uac.RelaunchElevated("--uninstall --all-users");
+        RefreshShellState();
+        _optionsPanel.SetStatus(ok
+            ? "All-users integration removed."
+            : "Uninstall cancelled or failed.");
+    }
+
+    private void RefreshShellState()
+    {
+        var s = AppSettings.Load();
+        _settings.ModernShellInstalled = s.ModernShellInstalled;
+        _settings.ShellInstallScope = s.ShellInstallScope;
+        _settings.SparsePackageFullName = s.SparsePackageFullName;
+        _settings.ShellIntegrationEnabled = s.ShellIntegrationEnabled;
+        _settings.RegisteredExtensions = s.RegisteredExtensions;
+        _optionsPanel.RefreshFromSettings();
+    }
+
     private void UpdateStatus()
     {
         var format = string.IsNullOrWhiteSpace(_outputPanel.OutputFormat) ? "mp3" : _outputPanel.OutputFormat;
         var mode = _outputPanel.Channels == 1 ? "Mono" : "Stereo";
+        var quality = _outputPanel.Quality switch { 2 => "High Quality", 5 => "Standard", 7 => "Fast", _ => "High Quality" };
         var target = _outputPanel.SaveToSource
             ? "source folder"
             : (string.IsNullOrWhiteSpace(_outputPanel.SaveToFolder) ? "source folder" : _outputPanel.SaveToFolder);
         var queue = _queue.Count == 0 ? "no files" : $"{_queue.Count} file(s)";
-        _statusLabel.Text = $"Convert to .{format} | CBR(224kbps)|High Quality|Mode({mode}) | -> {target} | {queue}";
+        _statusLabel.Text = $"Convert to .{format} | CBR({_outputPanel.BitrateKbps}kbps)|{quality}|Mode({mode}) | -> {target} | {queue}";
     }
 }
